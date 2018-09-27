@@ -7,10 +7,10 @@ stdout = process.stdout
 #process.env["PATH"] = "node_modules/.bin:#{process.env["PATH"]}"
 
 # ANSI Terminal Colors.
-bold = "\033[0;1m"
-red = "\033[0;31m"
-green = "\033[0;32m"
-reset = "\033[0m"
+bold = "\x1B[0;1m"
+red = "\x1B[0;31m"
+green = "\x1B[0;32m"
+reset = "\x1B[0m"
 
 # Log a message with a color.
 log = (message, color, explanation) ->
@@ -24,12 +24,12 @@ onError = (err) ->
 
 # Setup development dependencies, not part of runtime dependencies.
 task "setup", "Install development dependencies", ->
-  fs.readFile "package.json", "utf8", (err, package) ->
+  fs.readFile "package.json", "utf8", (err, pkg) ->
     log "Need runtime dependencies, installing into node_modules ...", green
     exec "npm bundle", onError
 
     log "Need development dependencies, installing ...", green
-    for name, version of JSON.parse(package).devDependencies
+    for name, version of JSON.parse(pkg).devDependencies
       log "Installing #{name} #{version}", green
       exec "npm bundle install \"#{name}@#{version}\"", onError
 
@@ -43,7 +43,7 @@ task "install", "Install Hoard in your local repository", ->
 
 build = (callback) ->
   log "Compiling CoffeeScript to JavaScript ...", green
-  exec "coffee -c -l -b -o lib src", (err, stdout) -> callback err
+  exec "node_modules/coffeescript/bin/coffee -c -b -o lib src", (err, stdout) -> callback err
 task "build", "Compile CoffeeScript to JavaScript", -> build onError
 
 runTests = (callback) ->
