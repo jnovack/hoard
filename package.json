@@ -29,12 +29,16 @@
     "node": ">= 0.4.0"
   },
   "dependencies": {
-    "binary": ">= 0.2.5",
-    "put": ">= 0.0.5"
+    "binary": "^0.3.0",
+    "put": "0.0.6",
   },
   "devDependencies": {
+    "chai": "^4.2.0",
+    "coffeescript": "^2.3.2",
     "coffee-script": ">= 1.0.1",
-    "expresso": ">= 0.8.1"
+    "expresso": ">= 0.8.1",
+    "mocha": "^5.2.0",
+    "stdio": "^0.2.7"
   },
   "licenses": [
     {
