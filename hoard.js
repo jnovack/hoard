@@ -318,10 +318,7 @@ updateMany = function(filename, points) {
             return a[0] - b[0];
         }).reverse();
         // FIXME: Check lock
-        return info(filename, function(err, header) {
-            if (err) {
-                cb(err);
-            }
+        return info(filename).then(header => {
             return fs.open(filename, 'r+', function(err, fd) {
                 var age, archives, currentArchive, currentArchiveIndex, currentPoints, j, len, now, point, updateArchiveCalls;
                 now = unixTime();
@@ -339,8 +336,8 @@ updateMany = function(filename, points) {
                         currentPoints.reverse(); // Put points in chronological order
                         (function(header, currentArchive, currentPoints) {
                             var f;
-                            f = function(cb) {
-                                return updateManyArchive(fd, header, currentArchive, currentPoints, cb);
+                            f = function() {
+                                return updateManyArchive(fd, header, currentArchive, currentPoints, () => { resolve(); });
                             };
                             return updateArchiveCalls.push(f);
                         })(header, currentArchive, currentPoints);
@@ -367,14 +364,11 @@ updateMany = function(filename, points) {
                 if (currentArchive && currentPoints.length > 0) {
                     // Don't forget to commit after we've checked all the archives
                     currentPoints.reverse();
-                    return updateManyArchive(fd, header, currentArchive, currentPoints, function(err) {
-                        if (err) {
-                            throw err;
-                        }
-                        return fs.close(fd, cb);
-                    });
+                    return updateManyArchive(fd, header, currentArchive, currentPoints).then( () => {
+                        return fs.close(fd, () => { resolve(); });
+                    }).catch( (err) => reject() );
                 } else {
-                    return fs.close(fd, cb);
+                    return fs.close(fd, () => { resolve(); });
                 }
             });
         });
@@ -386,154 +380,155 @@ updateMany = function(filename, points) {
 // FIXME: touch last update
 // FIXME: fsync here?
 // FIXME: close fd fh.close()
-//cb(null)
-updateManyArchive = function(fd, header, archive, points, cb) {
-  var alignedPoints, ap, currentString, interval, j, k, len, len1, numberOfPoints, p, packedBasePoint, packedStrings, previousInterval, startInterval, step, timestamp, value;
-  step = archive.secondsPerPoint;
-  alignedPoints = [];
-  for (j = 0, len = points.length; j < len; j++) {
-    p = points[j];
-    [timestamp, value] = p;
-    alignedPoints.push([timestamp - timestamp.mod(step), value]);
-  }
-  // Create a packed string for each contiguous sequence of points
-  packedStrings = [];
-  previousInterval = null;
-  currentString = [];
-  for (k = 0, len1 = alignedPoints.length; k < len1; k++) {
-    ap = alignedPoints[k];
-    [interval, value] = ap;
-    if (!previousInterval || (interval === previousInterval + step)) {
-      currentString.concat(pack.Pack(pointFormat, [interval, value]));
-      previousInterval = interval;
-    } else {
-      numberOfPoints = currentString.length / pointSize;
-      startInterval = previousInterval - (step * (numberOfPoints - 1));
-      packedStrings.push([startInterval, new Buffer(currentString)]);
-      currentString = pack.Pack(pointFormat, [interval, value]);
-      previousInterval = interval;
-    }
-  }
-  if (currentString.length > 0) {
-    numberOfPoints = currentString.length / pointSize;
-    startInterval = previousInterval - (step * (numberOfPoints - 1));
-    packedStrings.push([startInterval, new Buffer(currentString, 'binary')]);
-  }
-  // Read base point and determine where our writes will start
-  packedBasePoint = new Buffer(pointSize);
-  return fs.read(fd, packedBasePoint, 0, pointSize, archive.offset, function(err) {
-    var baseInterval, baseValue, propagateLowerArchives, writePackedString;
-    if (err) {
-      cb(err);
-    }
-    [baseInterval, baseValue] = pack.Unpack(pointFormat, packedBasePoint);
-    if (baseInterval === 0) {
-      // This file's first update
-      // Use our first string as the base, so we start at the start
-      baseInterval = packedStrings[0][0];
-    }
-    // Write all of our packed strings in locations determined by the baseInterval
-    writePackedString = function(ps, callback) {
-      var archiveEnd, byteDistance, bytesBeyond, myOffset, packedString, pointDistance, timeDistance;
-      [interval, packedString] = ps;
-      timeDistance = interval - baseInterval;
-      pointDistance = timeDistance / step;
-      byteDistance = pointDistance * pointSize;
-      myOffset = archive.offset + byteDistance.mod(archive.size);
-      archiveEnd = archive.offset + archive.size;
-      bytesBeyond = (myOffset + packedString.length) - archiveEnd;
-      if (bytesBeyond > 0) {
-        return fs.write(fd, packedString, 0, packedString.length - bytesBeyond, myOffset, function(err) {
-          if (err) {
-            cb(err);
-          }
-          assert.equal(archiveEnd, myOffset + packedString.length - bytesBeyond);
-          //assert fh.tell() == archiveEnd, "archiveEnd=%d fh.tell=%d bytesBeyond=%d len(packedString)=%d" % (archiveEnd,fh.tell(),bytesBeyond,len(packedString))
-          // Safe because it can't exceed the archive (retention checking logic above)
-          return fs.write(fd, packedString, packedString.length - bytesBeyond, bytesBeyond, archive.offset, function(err) {
-            if (err) {
-              cb(err);
-            }
-            return callback();
-          });
-        });
-      } else {
-        return fs.write(fd, packedString, 0, packedString.length, myOffset, function(err) {
-          return callback();
-        });
-      }
-    };
-    async.forEachSeries(packedStrings, writePackedString, function(err) {
-      if (err) {
-        throw err;
-      }
-      return propagateLowerArchives();
-    });
-    return propagateLowerArchives = function() {
-      var arc, callPropagate, fit, higher, l, len2, len3, lower, lowerArchives, lowerIntervals, m, propagateCalls, uniqueLowerIntervals;
-      // Now we propagate the updates to lower-precision archives
-      higher = archive;
-      lowerArchives = (function() {
-        var l, len2, ref, results1;
-        ref = header.archives;
-        results1 = [];
-        for (l = 0, len2 = ref.length; l < len2; l++) {
-          arc = ref[l];
-          if (arc.secondsPerPoint > archive.secondsPerPoint) {
-            results1.push(arc);
-          }
+updateManyArchive = function(fd, header, archive, points) {
+    return (new Promise(function(resolve, reject) {
+        var alignedPoints, ap, currentString, interval, j, k, len, len1, numberOfPoints, p, packedBasePoint, packedStrings, previousInterval, startInterval, step, timestamp, value;
+        step = archive.secondsPerPoint;
+        alignedPoints = [];
+        for (j = 0, len = points.length; j < len; j++) {
+            p = points[j];
+            [timestamp, value] = p;
+            alignedPoints.push([timestamp - timestamp.mod(step), value]);
         }
-        return results1;
-      })();
-      if (lowerArchives.length > 0) {
-        // Collect a list of propagation calls to make
-        // This is easier than doing async looping
-        propagateCalls = [];
-        for (l = 0, len2 = lowerArchives.length; l < len2; l++) {
-          lower = lowerArchives[l];
-          fit = function(i) {
-            return i - i.mod(lower.secondsPerPoint);
-          };
-          lowerIntervals = (function() {
-            var len3, m, results1;
-            results1 = [];
-            for (m = 0, len3 = alignedPoints.length; m < len3; m++) {
-              p = alignedPoints[m];
-              results1.push(fit(p[0]));
+        // Create a packed string for each contiguous sequence of points
+        packedStrings = [];
+        previousInterval = null;
+        currentString = [];
+        for (k = 0, len1 = alignedPoints.length; k < len1; k++) {
+            ap = alignedPoints[k];
+            [interval, value] = ap;
+            if (!previousInterval || (interval === previousInterval + step)) {
+                currentString.concat(pack.Pack(pointFormat, [interval, value]));
+                previousInterval = interval;
+            } else {
+                numberOfPoints = currentString.length / pointSize;
+                startInterval = previousInterval - (step * (numberOfPoints - 1));
+                packedStrings.push([startInterval, new Buffer(currentString)]);
+                currentString = pack.Pack(pointFormat, [interval, value]);
+                previousInterval = interval;
             }
-            return results1;
-          })();
-          uniqueLowerIntervals = _.uniq(lowerIntervals);
-          for (m = 0, len3 = uniqueLowerIntervals.length; m < len3; m++) {
-            interval = uniqueLowerIntervals[m];
-            propagateCalls.push({
-              interval: interval,
-              header: header,
-              higher: higher,
-              lower: lower
+        }
+        if (currentString.length > 0) {
+            numberOfPoints = currentString.length / pointSize;
+            startInterval = previousInterval - (step * (numberOfPoints - 1));
+            packedStrings.push([startInterval, new Buffer(currentString, 'binary')]);
+        }
+        // Read base point and determine where our writes will start
+        packedBasePoint = new Buffer(pointSize);
+        return fs.read(fd, packedBasePoint, 0, pointSize, archive.offset, function(err) {
+            var baseInterval, baseValue, propagateLowerArchives, writePackedString;
+            if (err) {
+                reject(err);
+            }
+            [baseInterval, baseValue] = pack.Unpack(pointFormat, packedBasePoint);
+            if (baseInterval === 0) {
+                // This file's first update
+                // Use our first string as the base, so we start at the start
+                baseInterval = packedStrings[0][0];
+            }
+            // Write all of our packed strings in locations determined by the baseInterval
+            writePackedString = function(ps, callback) {
+                var archiveEnd, byteDistance, bytesBeyond, myOffset, packedString, pointDistance, timeDistance;
+                [interval, packedString] = ps;
+                timeDistance = interval - baseInterval;
+                pointDistance = timeDistance / step;
+                byteDistance = pointDistance * pointSize;
+                myOffset = archive.offset + byteDistance.mod(archive.size);
+                archiveEnd = archive.offset + archive.size;
+                bytesBeyond = (myOffset + packedString.length) - archiveEnd;
+                if (bytesBeyond > 0) {
+                    return fs.write(fd, packedString, 0, packedString.length - bytesBeyond, myOffset, function(err) {
+                        if (err) {
+                            reject(err);
+                        }
+                        assert.equal(archiveEnd, myOffset + packedString.length - bytesBeyond);
+                        //assert fh.tell() == archiveEnd, "archiveEnd=%d fh.tell=%d bytesBeyond=%d len(packedString)=%d" % (archiveEnd,fh.tell(),bytesBeyond,len(packedString))
+                        // Safe because it can't exceed the archive (retention checking logic above)
+                        return fs.write(fd, packedString, packedString.length - bytesBeyond, bytesBeyond, archive.offset, function(err) {
+                            if (err) {
+                                reject(err);
+                            }
+                            return callback();
+                        });
+                    });
+                } else {
+                    return fs.write(fd, packedString, 0, packedString.length, myOffset, function(err) {
+                        return callback();
+                    });
+                }
+            };
+            propagateLowerArchives = function() {
+                var arc, callPropagate, fit, higher, l, len2, len3, lower, lowerArchives, lowerIntervals, m, propagateCalls, uniqueLowerIntervals;
+                // Now we propagate the updates to lower-precision archives
+                higher = archive;
+                lowerArchives = (function() {
+                    var l, len2, ref, results1;
+                    ref = header.archives;
+                    results1 = [];
+                    for (l = 0, len2 = ref.length; l < len2; l++) {
+                        arc = ref[l];
+                        if (arc.secondsPerPoint > archive.secondsPerPoint) {
+                            results1.push(arc);
+                        }
+                    }
+                    return results1;
+                })();
+                if (lowerArchives.length > 0) {
+                    // Collect a list of propagation calls to make
+                    // This is easier than doing async looping
+                    propagateCalls = [];
+                    for (l = 0, len2 = lowerArchives.length; l < len2; l++) {
+                        lower = lowerArchives[l];
+                        fit = function(i) {
+                            return i - i.mod(lower.secondsPerPoint);
+                        };
+                        lowerIntervals = (function() {
+                            var len3, m, results1;
+                            results1 = [];
+                            for (m = 0, len3 = alignedPoints.length; m < len3; m++) {
+                                p = alignedPoints[m];
+                                results1.push(fit(p[0]));
+                            }
+                            return results1;
+                        })();
+                        uniqueLowerIntervals = _.uniq(lowerIntervals);
+                        for (m = 0, len3 = uniqueLowerIntervals.length; m < len3; m++) {
+                            interval = uniqueLowerIntervals[m];
+                            propagateCalls.push({
+                                interval: interval,
+                                header: header,
+                                higher: higher,
+                                lower: lower
+                            });
+                        }
+                        higher = lower;
+                    }
+                    callPropagate = function(args, callback) {
+                        return propagate(fd, args.interval, args.header.xFilesFactor, args.higher, args.lower, function(err, result) {
+                            if (err) {
+                                reject(err);
+                            }
+                            return callback(err, result);
+                        });
+                    };
+                    return async.forEachSeries(propagateCalls, callPropagate, function(err, result) {
+                        if (err) {
+                            throw err;
+                        }
+                        return resolve(null);
+                    });
+                } else {
+                    return resolve(null);
+                }
+            };
+            async.forEachSeries(packedStrings, writePackedString, function(err) {
+                if (err) {
+                    throw err;
+                }
+                return propagateLowerArchives();
             });
-          }
-          higher = lower;
-        }
-        callPropagate = function(args, callback) {
-          return propagate(fd, args.interval, args.header.xFilesFactor, args.higher, args.lower, function(err, result) {
-            if (err) {
-              cb(err);
-            }
-            return callback(err, result);
-          });
-        };
-        return async.forEachSeries(propagateCalls, callPropagate, function(err, result) {
-          if (err) {
-            throw err;
-          }
-          return cb(null);
         });
-      } else {
-        return cb(null);
-      }
-    };
-  });
+    }));
 };
 
 info = path => {
@@ -669,7 +664,7 @@ fetch = (path, from, to) => {
                                         reject(err);
                                     }
                                     unpack(seriesBuffer); // We have read it, go unpack!
-                                    return fs.closeSync(fd);
+                                    return fs.close(fd, () => resolve() );
                                 });
                             });
                         }
