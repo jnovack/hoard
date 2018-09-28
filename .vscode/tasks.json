@@ -6,7 +6,7 @@
         {
             "label": "test",
             "type": "shell",
-            "command": "node_modules/mocha/bin/mocha",
+            "command": "node_modules/mocha/bin/mocha --trace-warnings --no-timeouts",
             "group": {
                 "kind": "build",
                 "isDefault": true
