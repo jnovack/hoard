@@ -12,190 +12,279 @@ const unixTime = function() {
 const FILENAME = 'test/large.whisper';
 
 describe('info()', function () {
-    it('contains all keys', function () {
-        hoard.info(FILENAME).then(function(header){
-            expect(header).to.have.all.keys('maxRetention', 'xFilesFactor', 'archives');;
+
+    this.beforeAll( (done) => {
+        hoard.info(FILENAME).then( ret => {
+            header = ret;
+            done();
         });
+    });
+
+    it('contains all keys', function () {
+        expect(header).to.have.all.keys('maxRetention', 'xFilesFactor', 'archives');
     });
 
     it('contains 2 archives', function () {
-        hoard.info(FILENAME).then(function(header){
-            expect(header.archives.length).to.equal(2);
-        });
+        expect(header.archives.length).to.equal(2);
     });
 
     it('retention = 3 years', function () {
-        hoard.info(FILENAME).then(function(header){
-            expect(header.maxRetention).to.equal(94608000);
-        });
+        expect(header.maxRetention).to.equal(94608000);
     });
 
     it('xFilesFactor = 0.5', function () {
-        hoard.info(FILENAME).then(function(header){
-            expect(header.xFilesFactor).to.equal(0.5);
-        });
+        expect(header.xFilesFactor).to.equal(0.5);
     });
 
     describe('archive 1', function () {
         it('retention = 1 year', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[0].retention).to.equal(31536000);
-            });
+            expect(header.archives[0].retention).to.equal(31536000);
         });
 
         it('secondsPerPoint = 3600', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[0].secondsPerPoint).to.equal(3600);
-            });
+            expect(header.archives[0].secondsPerPoint).to.equal(3600);
         });
 
         it('points = 8760', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[0].points).to.equal(8760);
-            });
+            expect(header.archives[0].points).to.equal(8760);
         });
 
         it('size = 105120', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[0].size).to.equal(105120);
-            });
+            expect(header.archives[0].size).to.equal(105120);
         });
 
         it('offset = 40', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[0].offset).to.equal(40);
-            });
+            expect(header.archives[0].offset).to.equal(40);
         });
     });
 
     describe('archive 2', function () {
         it('retention = 3 years', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[1].retention).to.equal(94608000);
-            });
+            expect(header.archives[1].retention).to.equal(94608000);
         });
 
         it('secondsPerPoint = 86400', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[1].secondsPerPoint).to.equal(86400);
-            });
+            expect(header.archives[1].secondsPerPoint).to.equal(86400);
         });
 
         it('points = 1095', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[1].points).to.equal(1095);
-            });
+            expect(header.archives[1].points).to.equal(1095);
         });
 
         it('size = 13140', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[1].size).to.equal(13140);
-            });
+            expect(header.archives[1].size).to.equal(13140);
         });
 
         it('offset = 105160', function () {
-            hoard.info(FILENAME).then(function(header){
-                expect(header.archives[1].offset).to.equal(105160);
-            });
+            expect(header.archives[1].offset).to.equal(105160);
         });
     });
 });
+
+
+// 1532865600 // Set Dates Dynamically
+const fromTime = 1532865550;
+const toTime = 1532865650;
 /*
+// Currently failing because original whisper file is too old!
+const values = [2048, 4546, 794, 805, 4718];
+describe('fetch()', function () {
 
-// Tests against Python generated Whisper data file
+    hoard.fetch(FILENAME, fromTime, toTime).then( ret => {
+        timeInfo = ret.meta;
+        vals = ret.data;
+        console.log(timeInfo);
+    });
+    it('test first entry', function () {
+            expect(timeInfo[0]).to.equal(1311163200);
+    });
 
-process.exit();
-var called, fromTime, toTime;
-called = false;
-fromTime = 1311161605;
-toTime = 1311179605;
-hoard.fetch(FILENAME, fromTime, toTime, function(err, timeInfo, values) {
-  var v;
-  if (err) {
-    throw err;
-  }
-  called = true;
-  assert.equal(1311163200, timeInfo[0]);
-  assert.equal(1311181200, timeInfo[1]);
-  assert.equal(3600, timeInfo[2]);
-  v = [2048, 4546, 794, 805, 4718];
-  assert.length(values, v.length);
-  return assert.eql(v, values);
+    it('test second entry', function () {
+            expect(timeInfo[1]).to.equal(1311181200);
+    });
+
+    it('test third entry', function () {
+            expect(timeInfo[2]).to.equal(3600);
+    });
+
+    it('array lengths', function () {
+            expect(vals).to.have.lengthOf(5);
+    });
+
+    it.skip('array equals', function () {
+            expect(vals).to.equal(values);
+    });
 });
-
-
+*/
 
 // Test Create
 filename = 'test/testcreate.hoard';
 if (fs.existsSync(filename)) {
-  fs.unlinkSync(filename);
+    fs.unlinkSync(filename);
 }
-hoard.create(filename, [[1, 60], [10, 600]], 0.5, function(err) {
-  var hoardFile, whisperFile;
-  if (err) {
-    throw err;
-  }
-  console.log(filename);
-  hoardFile = fs.statSync(filename);
-  whisperFile = fs.statSync('test/testcreate.whisper');
-  console.log(hoardFile.size, whisperFile.size);
-  assert.equal(whisperFile.size, hoardFile.size, "File lengths must match");
-  return hoard.info(filename, function(err, header) {
-    var archive;
-    assert.equal(6000, header.maxRetention);
-    assert.equal(0.5, header.xFilesFactor);
-    assert.equal(2, header.archives.length);
-    archive = header.archives[0];
-    assert.equal(60, archive.retention);
-    assert.equal(1, archive.secondsPerPoint);
-    assert.equal(60, archive.points);
-    assert.equal(720, archive.size);
-    assert.equal(40, archive.offset);
-    archive = header.archives[1];
-    assert.equal(6000, archive.retention);
-    assert.equal(10, archive.secondsPerPoint);
-    assert.equal(600, archive.points);
-    assert.equal(7200, archive.size);
-    assert.equal(760, archive.offset);
-  });
-});
 
+describe('create()', function () {
 
-// FIXME: Compare to real file, must mock creation timestamp in create()
-//assert.eql whisperFile, hoardFile
-// return beforeExit(function() {
-//   return assert.ok(called, "Callback must return");
-// });
-
-var called, filename;
-    called = false;
-    filename = 'test/testupdate.hoard';
-if (fs.existsSync(filename)) {
-  fs.unlinkSync(filename);
-}
-hoard.create(filename, [[3600, 8760], [86400, 1095]], 0.5, function(err) {
-  if (err) {
-    throw err;
-  }
-  return hoard.update(filename, 1337, 1311169605, function(err) {
-    if (err) {
-      throw err;
-    }
-    return hoard.fetch(filename, 1311161605, 1311179605, function(err, timeInfo, values) {
-      if (err) {
-        throw err;
-      }
-      called = true;
-      equal(1311163200, timeInfo[0]);
-      equal(1311181200, timeInfo[1]);
-      equal(3600, timeInfo[2]);
-      assert.length(values, 5);
-      return equal(1337, values[1]);
+    this.beforeAll( (done) => {
+        hoard.create(filename, [[1, 60], [10, 600]], 0.5).then( () => {
+            done();
+        });
     });
-  });
+    this.beforeAll( (done) => {
+        hoard.info(filename).then( ret => {
+            header = ret;
+            done();
+        });
+    });
+
+    it('has the right size', function () {
+        hoardFile = fs.statSync(filename);
+        expect(hoardFile.size).to.equal(7960);
+    });
+
+    it('contains all keys', function () {
+        expect(header).to.have.all.keys('maxRetention', 'xFilesFactor', 'archives');
+    });
+
+    it('contains 2 archives', function () {
+        expect(header.archives.length).to.equal(2);
+    });
+
+    it('retention = 3 years', function () {
+        expect(header.maxRetention).to.equal(6000);
+    });
+
+    it('xFilesFactor = 0.5', function () {
+        expect(header.xFilesFactor).to.equal(0.5);
+    });
+
+
+    describe('archive 1', function () {
+        it('retention = 60 seconds', function () {
+            expect(header.archives[0].retention).to.equal(60);
+        });
+
+        it('secondsPerPoint = 1', function () {
+            expect(header.archives[0].secondsPerPoint).to.equal(1);
+        });
+
+        it('points = 60', function () {
+            expect(header.archives[0].points).to.equal(60);
+        });
+
+        it('size = 720', function () {
+            expect(header.archives[0].size).to.equal(720);
+        });
+
+        it('offset = 40', function () {
+            expect(header.archives[0].offset).to.equal(40);
+        });
+    });
+
+    describe('archive 2', function () {
+        it('retention = 100 minutes', function () {
+            expect(header.archives[1].retention).to.equal(6000);
+        });
+
+        it('secondsPerPoint = 10', function () {
+            expect(header.archives[1].secondsPerPoint).to.equal(10);
+        });
+
+        it('points = 600', function () {
+            expect(header.archives[1].points).to.equal(600);
+        });
+
+        it('size = 7200', function () {
+            expect(header.archives[1].size).to.equal(7200);
+        });
+
+        it('offset = 760', function () {
+            expect(header.archives[1].offset).to.equal(760);
+        });
+    });
+});
+
+// Test Update
+describe('update()', function () {
+
+    this.beforeAll( (done) => {
+        filename = 'test/testupdate.hoard';
+        if (fs.existsSync(filename)) {
+            fs.unlinkSync(filename);
+        }
+        done();
+    });
+
+    this.beforeAll( (done) => {
+        hoard.create(filename, [[3600, 8766]], 0.5).then( () => {
+            done();
+        });
+    });
+    this.beforeAll( (done) => {
+        hoard.update(filename, 1337, 1532865600).then( () => {
+            done();
+        });
+    });
+    this.beforeAll( (done) => {
+        hoard.fetch(filename, fromTime, toTime).then( ret => {
+            timeInfo = ret.meta;
+            vals = ret.data;
+            done();
+        });
+    });
+    this.beforeAll( (done) => {
+        hoard.info(filename).then( ret => {
+            header = ret;
+            done();
+        });
+    });
+
+    it('time start', function () {
+        expect(timeInfo[0]).to.equal(1532865600);
+    });
+
+    it('time end', function () {
+            expect(timeInfo[1]).to.equal(1532869200);
+    });
+
+    it('time interval', function () {
+            expect(timeInfo[2]).to.equal(3600);
+    });
+
+    it('array lengths', function () {
+            expect(vals).to.have.lengthOf(1);
+    });
+
+    it('array equals', function () {
+            expect(vals[0]).to.equal(1337);
+    });
+
+    describe('archive 1', function () {
+        it('retention = 1 year', function () {
+            expect(header.archives[0].retention).to.equal(31557600);
+        });
+
+        it('secondsPerPoint = 1', function () {
+            expect(header.archives[0].secondsPerPoint).to.equal(3600);
+        });
+
+        it('points = 8766', function () {
+            expect(header.archives[0].points).to.equal(8766);
+        });
+
+        it('size = 105192', function () {
+            expect(header.archives[0].size).to.equal(105192);
+        });
+
+        it('offset = 28', function () {
+            expect(header.archives[0].offset).to.equal(28);
+        });
+    });
 });
 
 
+
+/*
 var tsData;
 
 filename = 'test/testupdatemany.hoard';
