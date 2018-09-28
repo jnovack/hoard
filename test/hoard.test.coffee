@@ -1,6 +1,5 @@
 assert = require 'assert'
 fs = require 'fs'
-path = require 'path'
 hoard = require "hoard"
 equal = assert.equal
 
