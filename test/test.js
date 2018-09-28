@@ -282,39 +282,83 @@ describe('update()', function () {
     });
 });
 
-
-
-/*
-var tsData;
-
+// Offset by 220924800
 filename = 'test/testupdatemany.hoard';
 if (fs.existsSync(filename)) {
   fs.unlinkSync(filename);
 }
-tsData = JSON.parse(fs.readFileSync('test/timeseriesdata.json', 'utf8'));
-console.log(tsData[0]);
-hoard.create(filename, [[3600, 8760], [86400, 1095]], 0.5, function(err) {
-  if (err) {
-    throw err;
-  }
-  return hoard.updateMany(filename, tsData, function(err) {
-    var from, to;
-    if (err) {
-      throw err;
-    }
-    from = 1311277105;
-    to = 1311295105;
-    return hoard.fetch(filename, from, to, function(err, timeInfo, values) {
-      if (err) {
-        throw err;
-      }
-      called = true;
-      equal(1311278400, timeInfo[0]);
-      equal(1311296400, timeInfo[1]);
-      equal(3600, timeInfo[2]);
-      assert.length(values, 5);
-      return assert.eql([1043, 3946, 1692, 899, 2912], values);
+
+describe('updateMany()', function () {
+
+    this.beforeAll( (done) => {
+        filename = 'test/testupdatemany.hoard';
+        if (fs.existsSync(filename)) {
+            fs.unlinkSync(filename);
+        }
+        tsData = JSON.parse(fs.readFileSync('test/timeseriesdata.json', 'utf8'));
+        done();
     });
-  });
+    this.beforeAll( (done) => {
+        hoard.create(filename, [[3600, 87600]/*, [86400, 3650]*/], 0.5).then( () => {
+            done();
+        });
+    });
+    this.beforeAll( (done) => {
+        hoard.updateMany(filename, tsData).then( () => {
+            done();
+        });
+    });
+    this.beforeAll( (done) => {
+        from = 1532205000; // Sat, 21 Jul 2018 16:30:00 EDT (-0400)
+        to = 1532223000;   // Sat, 21 Jul 2018 21:30:00 EDT (-0400)
+        hoard.fetch(filename, fromTime, toTime).then( ret => {
+            timeInfo = ret.meta;
+            vals = ret.data;
+            done();
+        });
+    });
+    this.beforeAll( (done) => {
+        hoard.info(filename).then( ret => {
+            header = ret;
+            done();
+        });
+    });
+
+    /*
+        [1532203705,714]
+        [1532205505,1043]
+        [1532207305,2381]
+        [1532209105,3946]
+        [1532210905,770]
+        [1532212705,1692]
+        [1532214505,3376]
+        [1532216305,899]
+        [1532218105,1468]
+        [1532219905,2912]
+        [1532221705,4632]
+    */
+
+    it('time start', function () { // Sat, 21 Jul 2018 16:30:00 EDT (-0400)
+        expect(timeInfo[0]).to.equal(1532203200); // 1311278400 + 220924800;
+    });
+    it('time end', function () { // Sun, 22 Jul 2018 00:50:00 EDT (-0400)
+        expect(timeInfo[1]).to.equal(1532235000); // 1311296400 + 220924800;
+    });
+    it('time interval', function () {
+        expect(timeInfo[2]).to.equal(3600);
+    });
+    it('header offset', function () {
+        expect(header.archives[0].offset).to.equal(28);
+    });
+    it('values.length', function () {
+        expect(vals.length).to.equal(5);
+    });
+    it('offset = 28', function () {
+        expect(vals).to.equal([1043, 3946, 1692, 899, 2912]);
+    });
+    //   equal(1311278400 + 220924800, timeInfo[0]);
+    //   equal(1311296400 + 220924800, timeInfo[1]);
+    //   equal(3600, timeInfo[2]);
+    //   assert.length(values, 5);
+    //   assert.eql([1043, 3946, 1692, 899, 2912], values);
 });
-*/
